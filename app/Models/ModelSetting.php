@@ -15,52 +15,55 @@ class ModelSetting extends Model
     ];
     
     protected $casts = [
-        'settings' => 'array'
+        'settings' => 'encrypted:array'
     ];
     
-    // Get the parent model
     public function model()
     {
         return $this->morphTo();
     }
     
-    // Get a specific setting value
     public function getSetting($key, $default = null)
     {
-        $settings = is_array($this->settings) ? $this->settings : json_decode($this->settings, true);
+        $settings = $this->getAllSettings();
         return $settings[$key] ?? $default;
     }
     
-    // Set a specific setting value
     public function setSetting($key, $value)
     {
-        $settings = is_array($this->settings) ? $this->settings : json_decode($this->settings, true);
+        $settings = $this->getAllSettings();
         $settings[$key] = $value;
-        $this->settings = json_encode($settings);
+        $this->settings = $settings;
         $this->save();
         return $this;
     }
     
-    // Get all settings (renamed from all() to getAll() to avoid conflict)
     public function getAllSettings()
     {
-        return is_array($this->settings) ? $this->settings : json_decode($this->settings, true);
+        $settings = $this->settings;
+        
+        if (is_string($settings)) {
+            $decoded = json_decode($settings, true);
+            $settings = is_array($decoded) ? $decoded : [];
+        }
+        
+        return is_array($settings) ? $settings : [];
     }
     
-    // Delete a specific setting
     public function deleteSetting($key)
     {
-        $settings = is_array($this->settings) ? $this->settings : json_decode($this->settings, true);
-        unset($settings[$key]);
-        $this->settings = json_encode($settings);
-        $this->save();
+        $settings = $this->getAllSettings();
+        if (array_key_exists($key, $settings)) {
+            unset($settings[$key]);
+            $this->settings = $settings;
+            $this->save();
+        }
         return $this;
     }
     
-    // Clear all settings
     public function clearAllSettings()
     {
-        $this->settings = json_encode([]);
+        $this->settings = [];
         $this->save();
         return $this;
     }

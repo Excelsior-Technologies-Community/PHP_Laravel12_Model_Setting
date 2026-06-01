@@ -4,13 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\SettingsHistory;
+use App\Models\ModelSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 
 class UserController extends Controller
 {
-    // Show Dashboard with all settings
     public function dashboard()
     {
         $user = User::first();
@@ -25,10 +25,8 @@ class UserController extends Controller
         return view('dashboard', compact('user', 'settingsData', 'historyCount'));
     }
 
-    // Create User
     public function createUser()
     {
-        // Check if user already exists
         $user = User::first();
         if ($user) {
             return redirect('/dashboard')->with('info', 'User already exists!');
@@ -40,7 +38,6 @@ class UserController extends Controller
             'password' => bcrypt('123456')
         ]);
 
-        // Create default settings
         foreach ($user->defaultSettings() as $key => $value) {
             $user->setSetting($key, $value);
         }
@@ -48,7 +45,6 @@ class UserController extends Controller
         return redirect('/dashboard')->with('success', 'User Created Successfully!');
     }
 
-    // Add Settings
     public function addSettings()
     {
         $user = User::first();
@@ -64,7 +60,6 @@ class UserController extends Controller
         return redirect('/dashboard')->with('success', 'Settings Added Successfully!');
     }
 
-    // Show Settings Form
     public function showForm()
     {
         $user = User::first();
@@ -73,57 +68,53 @@ class UserController extends Controller
         return view('settings-form', compact('user', 'settings'));
     }
 
-    // Save Settings from Form
     public function saveSettings(Request $request)
-    {
-        $user = User::first();
-        
-        if (!$user) {
-            return redirect('/create-user')->with('error', 'Please create a user first');
-        }
-
-        $validated = $request->validate([
-            'theme' => 'required|in:light,dark',
-            'language' => 'required|in:en,hi,gu',
-            'notifications' => 'boolean',
-            'timezone' => 'required|string',
-            'date_format' => 'required|string',
-            'items_per_page' => 'required|integer|min:5|max:100',
-        ]);
-
-        $settings = [
-            'theme' => $validated['theme'],
-            'language' => $validated['language'],
-            'notifications' => $request->has('notifications'),
-            'timezone' => $validated['timezone'],
-            'date_format' => $validated['date_format'],
-            'items_per_page' => (int)$validated['items_per_page'],
-        ];
-
-        // Save all settings
-        foreach ($settings as $key => $value) {
-            $old = $user->getSetting($key);
-            
-            if ($old != $value) {
-                $user->setSetting($key, $value);
-                
-                // Save history
-                SettingsHistory::create([
-                    'user_id' => $user->id,
-                    'key' => $key,
-                    'old_value' => $old,
-                    'new_value' => $value,
-                ]);
-            }
-        }
-
-        // Clear cache
-        Cache::forget("user_{$user->id}_settings");
-
-        return redirect('/dashboard')->with('success', 'Settings Saved Successfully!');
+{
+    $user = User::first();
+    
+    if (!$user) {
+        return redirect('/create-user')->with('error', 'Please create a user first');
     }
 
-    // Get All Settings (API)
+    // Validate directly - no nested 'settings' array
+    $validated = $request->validate([
+        'theme'          => 'required|in:light,dark',
+        'language'       => 'required|in:en,hi,gu',
+        'notifications'  => 'nullable|boolean',
+        'timezone'       => 'required|string',
+        'date_format'    => 'required|string',
+        'items_per_page' => 'required|integer|min:5|max:100',
+    ]);
+
+    $settings = [
+        'theme'          => $validated['theme'],
+        'language'       => $validated['language'],
+        'notifications'  => $request->has('notifications') ? 1 : 0,
+        'timezone'       => $validated['timezone'],
+        'date_format'    => $validated['date_format'],
+        'items_per_page' => (int) $validated['items_per_page'],
+    ];
+
+    foreach ($settings as $key => $value) {
+        $old = $user->getSetting($key);
+
+        if ($old != $value) {
+            $user->setSetting($key, $value);
+
+            SettingsHistory::create([
+                'user_id'   => $user->id,
+                'key'       => $key,
+                'old_value' => $old,
+                'new_value' => $value,
+            ]);
+        }
+    }
+
+    Cache::forget("user_{$user->id}_settings");
+
+    return redirect('/dashboard')->with('success', 'Settings Saved Successfully!');
+}
+
     public function getSettings()
     {
         $user = User::first();
@@ -135,7 +126,6 @@ class UserController extends Controller
         return response()->json($settings);
     }
 
-    // Get Single Setting
     public function getSingle(Request $request)
     {
         $user = User::first();
@@ -147,7 +137,6 @@ class UserController extends Controller
         return response()->json(['key' => $key, 'value' => $user->getSetting($key)]);
     }
 
-    // Update Single Setting
     public function updateSetting(Request $request)
     {
         $user = User::first();
@@ -171,7 +160,6 @@ class UserController extends Controller
         return response()->json(['message' => 'Setting Updated', 'old' => $old, 'new' => $value]);
     }
 
-    // Delete Setting
     public function deleteSetting(Request $request)
     {
         $user = User::first();
@@ -195,7 +183,6 @@ class UserController extends Controller
         return response()->json(['message' => 'Setting Deleted']);
     }
 
-    // View Settings History
     public function settingsHistory()
     {
         $user = User::first();
@@ -210,7 +197,6 @@ class UserController extends Controller
         return view('history', compact('history', 'user'));
     }
 
-    // Export Settings
     public function exportSettings()
     {
         $user = User::first();
@@ -228,7 +214,6 @@ class UserController extends Controller
         ]);
     }
 
-    // Import Settings
     public function importSettings(Request $request)
     {
         $request->validate([
@@ -259,7 +244,6 @@ class UserController extends Controller
         return redirect('/dashboard')->with('success', 'Settings Imported Successfully!');
     }
 
-    // Reset to Default Settings
     public function resetSettings()
     {
         $user = User::first();
@@ -270,11 +254,9 @@ class UserController extends Controller
 
         $oldSettings = $user->settings()->getAllSettings();
         
-        // Clear all settings
         $settings = $user->settings();
         $settings->clearAllSettings();
         
-        // Apply defaults
         foreach ($user->defaultSettings() as $key => $value) {
             $user->setSetting($key, $value);
             
@@ -289,7 +271,6 @@ class UserController extends Controller
         return redirect('/dashboard')->with('success', 'Settings Reset to Default!');
     }
 
-    // Analytics Dashboard
     public function analytics()
     {
         $user = User::first();
@@ -308,5 +289,65 @@ class UserController extends Controller
             ->get();
             
         return view('analytics', compact('history', 'recentChanges', 'user'));
+    }
+
+    public function bulkUpdateAjax(Request $request)
+{
+    $user = User::first();
+
+    if (!$user) {
+        return response()->json(['success' => false, 'message' => 'No user found']);
+    }
+
+   
+    $fields = ['theme', 'language', 'notifications', 'timezone', 'date_format', 'items_per_page'];
+    $updated = false;
+
+    foreach ($fields as $key) {
+        if ($request->has($key)) {
+            $value = $request->input($key);
+            $old   = $user->getSetting($key);
+
+            if ($old != $value) {
+                $user->setSetting($key, $value);
+
+                SettingsHistory::create([
+                    'user_id'   => $user->id,
+                    'key'       => $key,
+                    'old_value' => $old,
+                    'new_value' => $value,
+                ]);
+
+                $updated = true;
+            }
+        }
+    }
+
+    Cache::forget("user_{$user->id}_settings");
+
+    return response()->json([
+        'success' => true,
+        'message' => $updated ? 'Settings updated via AJAX!' : 'No changes detected.'
+    ]);
+}
+
+    public function search(Request $request)
+    {
+        $user = User::first();
+        if (!$user) {
+            return response()->json([]);
+        }
+
+        $query = strtolower($request->get('q'));
+        $settings = $user->settings()->getAllSettings();
+
+        $filtered = [];
+        foreach ($settings as $key => $value) {
+            if (str_contains(strtolower($key), $query)) {
+                $filtered[] = ['key' => $key, 'value' => $value];
+            }
+        }
+
+        return response()->json($filtered);
     }
 }
